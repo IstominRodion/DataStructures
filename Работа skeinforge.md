@@ -1,0 +1,5 @@
+вызывается writeOutput с аргументами (имя файла stl)
+	в writeOutput вызывается writeOuput из модуля craft. Craft нужен для доступа к плагинам, которые делают gcode
+	в craft.writeOuput вызывается consecution.getLastModule consecution - набор утилит для связи плагинов, которые делают gcode
+		в getLastModule получаем тип крафта (что делаем - печатаем, режем и т.д.) Типы крафта хранятся в папке profile_plugins. В типе крафта хранится последовательность крафт плагинов. Например, для экструзии - carve,preface,widen,inset,fill,multiply,speed,raft,chamber,tower,jitter,comb,clip,cool,stretch,hop,wipe,oozebane,splodge,home,lash,fillet,dimension,unpause,export Эти плагины есть в папке craft_plugins. В конце плагин возвращается в writeOutput 
+	у плагина вызвается writeOuput. Там уже получается gCode из stl
