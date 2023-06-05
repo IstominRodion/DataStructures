@@ -1,0 +1,117 @@
+Далее описана последовательность действий подготовки stl файла к печати. Последовательность состоит из этапов. Подробно описан первый этап - carve - преобразование 3д объекта в формате stl к слоям в формате svg
+
+
+
+carve
+
+Переводит 3д фигуру в svg слои
+
+Сначала импортируется файл. Для каждого типа импортируемых файлов свой скрипт. В данном случае рассматриваем импорт из stl. Весь текст stl считывается. Инициализируется TriangleMesh (полигональная сетка??), vertexIndexTable (словарь уникальных вершин в полигональной форме (вычисляется далее, так как сначала вычисляются полигоны, в которых есть пересекающиеся вершины)). Затем из каждой строки stl файла получаем вершины (vertex, vertices) - разделяется строка по пробелам, берутся [1],[2],[3] элементы, которыми инициализируется объект класса Vector3 (просто вектор).
+
+TriangleMesh - модель 3д объекта, содержит список плоскостей (faces) (полигонов из стл файла), определяемых тремя вершинами, список вершин (verticies), список граней между (edges)
+
+Сейчас есть пустой TriangleMesh, vertexIndexTable, спиок вершин vertices. Все эти объекты отправляются в addFacesGivenVertices. В этом методе получаются плоскости из вершин и добавляются в triangleMesh. Для этого берется по три вершины из verticies и вызывается getFaceGivenLines( triangleMesh, vertexIndex, vertexIndexTable, vertices ).  triangleMesh, vertexIndexTable, vertices берутся из параметров метода, vertexIndex - первая вершина из тройки (for vertexIndex in xrange( 0, len( vertices ), 3 ))
+
+В getFaceGivenLines инициализируется Face - плоскость. Затем в цикле перебираются три вершины плоскости. По индексу из списка verticies берется Vertex. Затем нужно добавить его в таблицу вершин (vertexIndexTable). Для этого проверяем, есть ли он в таблице. Предварительно вычисляем уникальный индекс вершины vertexUniqueIndex = len( vertexIndexTable ). Смотрим, есть ли вершина в таблице if str( vertex ) in vertexIndexTable. Если есть, то просто получаем ее индекс (ранее вычисленный). Если нет, то добавляем вершину в vertexIndexTable и список вершин triangleMesh triangleMesh.vertices.append( vertex ). В конце итерации цикла добавляем уникальный индекс вершины в список вершин созданной плоскости face. Возвращаем плоскость из getFaceGivenLines
+
+Затем идет triangleMesh.setEdgesForAllFaces() Этот метод добавляет грани между плоскостями. Метод схож по принципу работы с getFaceGivenLines. Там берутся плоскости, добавленные в tringleMesh (triangleMesh.faces), по их точкам создаются грани (объекты класса Edge), также вычисляются уникальные индексы для граней, чтобы не добавить повторяющиеся и добавляются в список граней triangleMesh
+
+После добавления граней идет return triangleMesh и он помещается в переменную carving. Вызвается CarveSkein().getCarvedSVG( carving, fileName, repository ). С первыми двумя параметрами понятно (модель 3д объекта и имя файла). repository - объект с настройками carving'a (берется из граф интерфейса)
+
+getCarvedSVG инициализируются параметры (толщина слоя, isCorrectMesh и тд), затем идет rotatedBoundaryLayers = carving.getCarveRotatedBoundaryLayers() - возвращает развернутые граничные слои??? (видимо просто слои наплавления)
+
+В getCarveRotatedBoundaryLayers вычисляется верхняя и нижняя точка фигуры, затем вычисляется zZoneInterval (Get the zone interval around the slice height) толщина слоя / 99 / 100.0. Далее вычисляется координата первого слоя и последнего слоя и вызвается z = self.getZAddExtruderPaths( z ) в цикле while z < layerTop (деление фигуры на слои)
+
+getZAddExtruderPaths инициализируется zoneArray - массив высот (координат z), в которые входят точки. Затем проходимся по точкам carving.vertices (модель 3д объекта) и вычисляем, к какой зоне относится точка. Добавляем новые зоны в zoneArray. Находим самую низкую зону в zoneArray. Инициализирум объект rotatedBoundaryLayer класса euclidean.RotatedLoopLayer(zPlusAround) (по сути слой 3д объекта) (zPlusAround сложно вычисляется из высоты слоя, зоны и еще какого-то отступа). Добавляем его в общую модель 3д фигуры (carvind или triangleMesh) и заполняем вычисляем путь экструдера для заполнения self.getLoopsFromMesh( zPlusAround ) Далее вычисляются поддержки ?? getBridgeLoops( self.layerThickness, loop )
+
+вычислили слои по всей высоте фигуры, вернулись в getCarvedSVG. Далее вызвается getReplacedSVGTemplate, преобразующий слои в svg. В следующем модуле svg слои (preface) преобразуется в gcode
+
+
+
+
+getCraftedTextFromFileName()
+	carving = svg_codec.getCarving( fileName )
+		importPluginFileNames = interpret.getImportPluginFileNames() -> плагин для импорта типа файла, который передали к кваргах
+		return pluginModule.getCarving( fileName ) 
+			(если pluginModule - stl)
+			stlData = gcodec.getFileText( fileName, 'rb' ) вот тут "текст", который описывает 3д модель
+			triangleMesh = triangle_mesh.TriangleMesh()
+			vertexIndexTable = {}
+			addFacesGivenText( stlData, triangleMesh, vertexIndexTable ) вот это достает плоскости (face) из текста
+				lines = gcodec.getTextLines( stlText )
+			 	for line in lines: // читаем строки текста
+			 		if line.find( 'vertex' ) != - 1: // если строка описывает вектор
+			 			vertices.append( getVertexGivenLine( line ) ) // то добавляем ее в вектора
+			 	addFacesGivenVertices( triangleMesh, vertexIndexTable, vertices ) // получаем плоскости из данных векторов
+					for vertexIndex in xrange( 0, len( vertices ), 3 ):
+						triangleMesh.faces.append( getFaceGivenLines( triangleMesh, vertexIndex, vertexIndexTable, vertices ) )					
+						getFaceGivenLines // получаем плоскость по линиям	
+						face = triangle_mesh.Face()
+						for vertexIndex in xrange( vertexStartIndex, vertexStartIndex + 3 ):
+							vertex = vertices[ vertexIndex ]
+							vertexUniqueIndex = len( vertexIndexTable )
+							if str( vertex ) in vertexIndexTable:
+								vertexUniqueIndex = vertexIndexTable[ str( vertex ) ]
+							else:
+								vertexIndexTable[ str( vertex ) ] = vertexUniqueIndex
+								triangleMesh.vertices.append( vertex )
+							face.vertexIndexes.append( vertexUniqueIndex )
+						return face
+			triangleMesh.setEdgesForAllFaces() // добавляем грани между плоскостями
+			return triangleMesh
+	return CarveSkein().getCarvedSVG( carving, fileName, repository )
+		 carving.getCarveRotatedBoundaryLayers()
+			while z < layerTop:
+				z = self.getZAddExtruderPaths( z )
+				"Get next z and add extruder loops."
+				zoneArray = []
+				for point in self.vertices:
+					addToZoneArray( point, z, zoneArray, self.zZoneInterval )
+				lowestZoneIndex = getLowestZoneIndex( zoneArray, z )
+				halfAround = int( math.ceil( float( lowestZoneIndex ) / 2.0 ) )
+				zAround = float( halfAround ) * self.zZoneInterval
+				if lowestZoneIndex % 2 == 1:
+					zAround = - zAround
+				zPlusAround = z + zAround
+				rotatedBoundaryLayer = euclidean.RotatedLoopLayer( zPlusAround )
+				self.rotatedBoundaryLayers.append( rotatedBoundaryLayer )
+				rotatedBoundaryLayer.loops = self.getLoopsFromMesh( zPlusAround )
+				if self.bridgeLayerThickness == None:
+			  		return z + self.layerThickness
+				allExtrudateLoops = []
+				for loop in rotatedBoundaryLayer.loops:
+					allExtrudateLoops += getBridgeLoops( self.layerThickness, loop )
+				rotatedBoundaryLayer.rotation = getBridgeDirection( self.belowLoops, allExtrudateLoops, self.layerThickness )
+				self.belowLoops = allExtrudateLoops
+				if rotatedBoundaryLayer.rotation == None:
+					return z + self.layerThickness
+				return z + self.bridgeLayerThickness
+
+
+
+
+
+preface преобразует svg слои в gcode
+widen расширяет контуры наружу
+inset расширяет контуры внутрь
+fill заполняет периметры gcode
+multiply размножает фигуру в массив фигур
+speed настройка скорости подачи и скорости потока ?? (feed rate and flow rate)
+raft создание "плота" (вроде бы при начале печати создается площадка из пластика)
+chamber контроль температуры
+tower печать несоединенных участков модели
+jitter перенос конечной точки слоя в разные места
+comb comb the extrusion hair of a gcode file ??? 
+clip наезд на наплавленный слой, чтобы не было ям
+cool охлаждение фигуры
+stretch компенсация усадки
+hop поднятие экструдера, когда не идет печать
+wipe отчистка сопла
+oozebane выключает экструдер перед концом и включает перед началом
+splodge включение экструдера почти перед началом, чтобы новый слой схватился со старым
+home возвращение экструдера в начальную точку
+lash частичная компенсация люфта головки
+fillet закругление углов
+dimension добавляет расстояние Adrian'а
+unpause компенсация задержек микропроцессора
+export выбирает способ экспорта и экспортирует
